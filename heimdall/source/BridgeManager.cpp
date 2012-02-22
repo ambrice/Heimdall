@@ -1124,7 +1124,7 @@ bool BridgeManager::SendFile(FILE *file, int destination, int fileIdentifier) co
 		if (destination == EndFileTransferPacket::kDestinationPhone)
 		{
 			EndPhoneFileTransferPacket *endPhoneFileTransferPacket = new EndPhoneFileTransferPacket(
-				(isLastSequence) ? partialPacketLength : 0, lastFullPacketIndex, 0, 0, fileIdentifier, isLastSequence);
+				(isLastSequence) ? partialPacketLength : 0, lastFullPacketIndex, 0, 2, fileIdentifier, isLastSequence);
 
 			success = SendPacket(endPhoneFileTransferPacket, 3000);
 			delete endPhoneFileTransferPacket;
