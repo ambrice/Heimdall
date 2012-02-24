@@ -69,14 +69,16 @@ enum
 
 vector<const char *> knownPartitionNames[kKnownPartitionCount];
 
-struct PartitionNameFilePair
+struct PartitionInfo
 {
 	string partitionName;
+	unsigned int partitionType;
 	FILE *file;
 
-	PartitionNameFilePair(const char *partitionName, FILE *file)
+	PartitionInfo(const char *partitionName, unsigned int partitionType, FILE *file)
 	{
 		this->partitionName = partitionName;
+		this->partitionType = partitionType;
 		this->file = file;
 	}
 };
@@ -179,7 +181,7 @@ bool openFiles(const map<string, string>& argumentMap, map<string, FILE *>& argu
 	return (true);
 }
 
-bool mapFilesToPartitions(const map<string, FILE *>& argumentFileMap, const PitData *pitData, map<unsigned int, PartitionNameFilePair>& partitionFileMap)
+bool mapFilesToPartitions(const map<string, FILE *>& argumentFileMap, const PitData *pitData, map<unsigned int, PartitionInfo>& partitionFileMap)
 {
 	map<string, FILE *>::const_iterator it = argumentFileMap.begin();
 
@@ -216,8 +218,9 @@ bool mapFilesToPartitions(const map<string, FILE *>& argumentFileMap, const PitD
 
 			if (!pitEntry && knownPartition == kKnownPartitionPit)
 			{
-				PartitionNameFilePair partitionNameFilePair(knownPartitionNames[kKnownPartitionPit][0], it->second);
-				partitionFileMap.insert(pair<unsigned int, PartitionNameFilePair>(static_cast<unsigned int>(-1), partitionNameFilePair));
+				// Assume PIT always has partition type 0 if its partition is not found in the PIT?
+				PartitionInfo partitionInfo(knownPartitionNames[kKnownPartitionPit][0], 0, it->second);
+				partitionFileMap.insert(pair<unsigned int, PartitionInfo>(static_cast<unsigned int>(-1), partitionInfo));
 
 				return (true);
 			}
@@ -229,8 +232,8 @@ bool mapFilesToPartitions(const map<string, FILE *>& argumentFileMap, const PitD
 			return (false);
 		}
 
-		PartitionNameFilePair partitionNameFilePair(pitEntry->GetPartitionName(), it->second);
-		partitionFileMap.insert(pair<unsigned int, PartitionNameFilePair>(pitEntry->GetPartitionIdentifier(), partitionNameFilePair));
+		PartitionInfo partitionInfo(pitEntry->GetPartitionName(), pitEntry->GetPartitionType(), it->second);
+		partitionFileMap.insert(pair<unsigned int, PartitionInfo>(pitEntry->GetPartitionIdentifier(), partitionInfo));
 	}
 
 	return (true);
@@ -261,7 +264,7 @@ int downloadPitFile(BridgeManager *bridgeManager, unsigned char **pitBuffer)
 	return (devicePitFileSize);
 }
 
-bool flashFile(BridgeManager *bridgeManager, unsigned int partitionIndex, const char *partitionName, FILE *file)
+bool flashFile(BridgeManager *bridgeManager, unsigned int partitionIndex, const char *partitionName, unsigned int partitionType, FILE *file)
 {
 	// PIT files need to be handled differently, try determine if the partition we're flashing to is a PIT partition.
 	bool isPit = false;
@@ -326,7 +329,7 @@ bool flashFile(BridgeManager *bridgeManager, unsigned int partitionIndex, const 
 			// We're uploading to a phone partition
 			Interface::Print("Uploading %s\n", partitionName);
 
-			if (bridgeManager->SendFile(file, EndPhoneFileTransferPacket::kDestinationPhone, partitionIndex))
+			if (bridgeManager->SendFile(file, EndPhoneFileTransferPacket::kDestinationPhone, partitionIndex, partitionType))
 			{
 				Interface::Print("%s upload successful\n", partitionName);
 				return (true);
@@ -451,7 +454,7 @@ bool attemptFlash(BridgeManager *bridgeManager, map<string, FILE *> argumentFile
 		}
 	}
 
-	map<unsigned int, PartitionNameFilePair> partitionFileMap;
+	map<unsigned int, PartitionInfo> partitionFileMap;
 
 	// Map the files being flashed to partitions stored in the PIT file.
 	if (!mapFilesToPartitions(argumentFileMap, pitData, partitionFileMap))
@@ -465,11 +468,11 @@ bool attemptFlash(BridgeManager *bridgeManager, map<string, FILE *> argumentFile
 	// If we're repartitioning then we need to flash the PIT file first.
 	if (repartition)
 	{
-		for (map<unsigned int, PartitionNameFilePair>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
+		for (map<unsigned int, PartitionInfo>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
 		{
 			if (it->second.file == localPitFile)
 			{
-				if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.file))
+				if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.partitionType, it->second.file))
 					return (false);
 
 				break;
@@ -478,21 +481,21 @@ bool attemptFlash(BridgeManager *bridgeManager, map<string, FILE *> argumentFile
 	}
 
 	// Flash partitions not involved in the boot process second.
-	for (map<unsigned int, PartitionNameFilePair>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
+	for (map<unsigned int, PartitionInfo>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
 	{
 		if (!isKnownPartition(it->second.partitionName.c_str(), kKnownPartitionPit) && !isKnownBootPartition(it->second.partitionName.c_str()))
 		{
-			if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.file))
+			if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.partitionType, it->second.file))
 				return (false);
 		}
 	}
 
 	// Flash boot partitions last.
-	for (map<unsigned int, PartitionNameFilePair>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
+	for (map<unsigned int, PartitionInfo>::iterator it = partitionFileMap.begin(); it != partitionFileMap.end(); it++)
 	{
 		if (isKnownBootPartition(it->second.partitionName.c_str()))
 		{
-			if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.file))
+			if (!flashFile(bridgeManager, it->first, it->second.partitionName.c_str(), it->second.partitionType, it->second.file))
 				return (false);
 		}
 	}

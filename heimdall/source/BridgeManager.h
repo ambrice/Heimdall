@@ -121,7 +121,7 @@ namespace Heimdall
 			bool SendPitFile(FILE *file) const;
 			int ReceivePitFile(unsigned char **pitBuffer) const;
 
-			bool SendFile(FILE *file, int destination, int fileIdentifier = -1) const;
+			bool SendFile(FILE *file, int destination, int fileIdentifier = -1, unsigned int partitionType = 0) const;
 			bool ReceiveDump(int chipType, int chipId, FILE *file) const;
 
 			bool IsVerbose(void) const
